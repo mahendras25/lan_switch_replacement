@@ -1,0 +1,64 @@
+---
+- name: Initializing the playbook
+  block: 
+    - name: Get facts from switch
+      ios_facts:
+        gather_subset: 
+          - interfaces
+          - min
+
+    - name: Commands initialized
+      ios_command:
+        commands: 
+          - show vlan | in active
+          - show ip int br
+          - show banner motd
+          - show run
+          - sh ip int br | ex Te|Gig|Loop|unassigned
+          - sh int status              
+      register: show_running
+
+    - name: Extracting details from {{ inventory_hostname }}
+      set_fact:  
+        vlandata: '{{ show_running.stdout[0] | regex_findall("(\d+)\s+(\w+.\S+\S)") }}'
+        lo_int: '{{ show_running.stdout[1] | regex_findall("L\S*", multiline=True) }}' 
+        banner_motd : '{{ show_running.stdout[2] }}'    
+        hostname: '{{ show_running.stdout[3] | regex_findall("hostname\s(.+)") }}'
+        nameserver: '{{ show_running.stdout[3] | regex_findall("ip\sname-server\s(\S*)") }}'
+        ip_domain: '{{ show_running.stdout[3] | regex_findall("ip.domain.name.(\S*)") }}'
+        vtp_domain: '{{ show_running.stdout[3] | regex_findall("vtp\sdomain\s(.*)") }}'
+        vtp_mode: '{{ show_running.stdout[3] | regex_findall("vtp\smode\s(\S+)") }}'
+        udld: '{{ show_running.stdout[3] | regex_findall("udld.(\S*)") }}'
+        spanning_tree_vl: '{{ show_running.stdout[3] | regex_findall("spanning-tree vlan 1,(\S*)") }}' 
+        mgmt_vrf: '{{ show_running.stdout[3] | regex_findall("interface (\S*)\n.vrf.*\n.\w*.\w*.(\S*).(\S*)") }}'
+        uplink_int: '{{ show_running.stdout[3] | regex_findall("interface (Ten\S*)\n.description.(.*)\n.switchport trunk allowed vlan (\S*)\n.switchport mode trunk") }}'
+        vlan_int: '{{ show_running.stdout[3] | regex_findall("interface.(Vlan\S*)\n.description.(.*)\n.ip.address.(\S*).(\S*)") }}'
+        vlan_int_ip: '{{ show_running.stdout[3] | regex_findall("interface\s(Vlan\d*)\n.ip.address.(\S*).(\S*)") }}'
+        default_gw: '{{ show_running.stdout[3] | regex_findall("ip\sdefault-gateway\s(\S*)") }}'
+        snmp_loc: '{{ show_running.stdout[3] | regex_findall("snmp-server\slocation\s(.*\S)") }}'
+        tacacs_ser: '{{ show_running.stdout[3] | regex_findall("tacacs\sserver\s\S*\n.address\sipv4\s(\S*)") }}'
+        ntp_serv: '{{ show_running.stdout[3] | regex_findall("ntp\sserver\s(\S*)") }}'
+        vlanint: '{{ show_running.stdout[4] | regex_findall("(Vlan\d+)\s+(\S*)") }}'
+        vlan_access: '{{ show_running.stdout[4] | regex_findall("Vlan(\d+)") }}'
+        gig_int: '{{ show_running.stdout[5] | regex_findall("G\S*", multiline=True) }}'
+        teng_int: '{{ show_running.stdout[5] | regex_findall("Te\S*", multiline=True) }}'            
+        line_pass: "{{ line_password }}"
+        port_count: "{{ ansible_net_interfaces | select('match', '^[TtEeGgEe].*') | list | length }}"             
+      register: set_facts_values
+
+    - name: Generating command output in file
+      template:
+        src: cisco_ios.j2
+        dest: "./config.txt"
+        
+  rescue:
+    - name: Set facts on error - command failed
+      set_fact:
+        exec_success: false
+        exec_changed: false
+        exec_rc: 313
+        exec_message: "set_facts_values missing"
+         
+            
+        
+

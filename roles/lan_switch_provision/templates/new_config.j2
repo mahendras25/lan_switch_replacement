@@ -1,0 +1,828 @@
+stack-mac persistent timer 0
+!The following commands will delete the current RSA and generate a new one. It will take up to several minutes, please wait....
+
+hostname {{ site_code }}-Z-UA-{{ bldg_room }}-{{ seq }}
+ip domain name dow.com
+crypto key zeroize rsa
+crypto key generate rsa usage-keys modulus 4096
+!
+! End run-once commands
+!
+!-----------------------------------------------------------------------------!
+!
+no service pad
+service tcp-keepalives-in
+service tcp-keepalives-out
+service timestamps debug datetime msec
+service timestamps log datetime msec
+service password-encryption
+service internal
+service counters max age 10
+service unsupported-transceiver
+!
+!
+!
+!
+!
+logging buffered 1024000 informational
+enable secret peleus26
+!
+clock timezone GMT 0
+							
+!
+no ip source-route
+ip arp proxy disable
+software auto-upgrade enable
+!
+!
+!
+!
+!
+ip name-server 10.0.1.1 10.0.2.11
+ip domain-lookup
+ip domain-name dow.com
+no service config
+no ip routing
+							  
+no ip dhcp snooping information option
+!
+ip dhcp snooping vlan {{ data_vlan }}, {{ voice_vlan }}
+!
+ip dhcp snooping
+!
+!
+qos queue-softmax-multiplier 1200
+vtp domain {{ site_code }}
+vtp version 3
+vtp mode transparent
+udld aggressive
+!
+cpp system-default
+!
+port-channel load-balance src-dst-mixed-ip-port
+!
+!
+diagnostic bootup level complete
+spanning-tree mode rapid-pvst
+spanning-tree logging
+spanning-tree portfast bpduguard default
+spanning-tree extend system-id
+errdisable recovery cause all
+netconf-yang
+! please type yes and wait, then carry on												  
+!
+redundancy
+ mode sso
+!
+hw-switch switch 1 logging onboard message level 5
+!
+! Repeat the following statements for each UA VLAN
+!
+spanning-tree vlan {{ data_vlan }} priority 32768
+!
+! Repeat the following statements for each Voice VLAN, if required
+!
+spanning-tree vlan {{ voice_vlan }} priority 32768
+!
+! Repeat the following VLAN definition for each UA VLAN
+!
+vlan {{ data_vlan }}
+ name {{ site_code}}/UAData/{{ data_vlan_ip }}/{{ data_vlan_cidr }}/{{ local_description }}
+!
+! Repeat the following VLAN definition for each Voice VLAN, if required
+!
+vlan {{ voice_vlan }}
+ name {{ site_code}}/UAVoip/{{ voice_vlan_ip }}/{{ voice_vlan_cidr }}/{{ local_description }}
+!
+!
+!
+! QOS
+!
+class-map match-any cm_Q2
+ match ip dscp af11  af12  af13
+class-map match-any cm_Q3
+ match ip dscp default
+class-map match-any cm_Q4
+ match ip dscp af21  af22  af23
+class-map match-any cm_Q5
+ match ip dscp af31  af32  af33
+class-map match-any cm_Q6
+ match ip dscp cs6
+class-map match-any cm_Q7
+ match ip dscp af41  af42  af43
+class-map match-any cm_P8
+ match ip dscp ef
+class-map match-any cm_COS4
+ match access-group name al_COS4
+class-map match-any cm_COS5
+ match access-group name al_COS5
+class-map match-any cm_COS2
+ match access-group name al_COS2
+class-map match-any cm_COS1
+ match access-group name al_COS1
+class-map match-any cm_COS2V
+ match access-group name al_COS2V
+!
+policy-map pm_queueing
+ class cm_P8
+  police rate percent 40
+  priority level 1
+ class cm_Q7
+  bandwidth remaining percent 30
+  queue-buffers ratio 15
+  queue-limit dscp af41 percent 100
+  queue-limit dscp af42 percent 90
+  queue-limit dscp af43 percent 80
+ class cm_Q6
+  bandwidth remaining percent 1
+  queue-buffers ratio 5
+  queue-limit dscp cs6 percent 100
+ class cm_Q5
+  bandwidth remaining percent 29
+  queue-buffers ratio 10
+  queue-limit dscp af31 percent 100
+  queue-limit dscp af32 percent 90
+  queue-limit dscp af33 percent 80
+ class cm_Q4
+  bandwidth remaining percent 29
+  queue-buffers ratio 30
+  queue-limit dscp af21 percent 100
+  queue-limit dscp af22 percent 90
+  queue-limit dscp af23 percent 80
+ class cm_Q3
+  bandwidth remaining percent 10
+  queue-buffers ratio 20
+  queue-limit dscp default percent 100
+ class class-default
+  bandwidth remaining percent 1
+  queue-buffers ratio 5
+  queue-limit dscp af11 percent 100
+  queue-limit dscp af12 percent 90
+  queue-limit dscp af13 percent 80
+policy-map pm_marking_notrust
+ class cm_COS1
+  set dscp ef
+ class cm_COS2V
+  set dscp af41
+ class cm_COS2
+  set dscp af31
+ class cm_COS4
+  set dscp default
+ class cm_COS5
+  set dscp af11
+ class class-default
+  set dscp af21
+!
+!
+interface GigabitEthernet0/0
+ description ** Not In Use **
+ vrf forwarding Mgmt-vrf
+ no ip address
+ shutdown
+!
+! Port Options - client devices
+!
+interface range GigabitEthernet1/0/1 - {{ port_range }}
+ description User data/phone port/{{ local_description }}
+ switchport access vlan {{ data_vlan }}
+ switchport mode access
+ switchport nonegotiate
+ switchport voice vlan {{ voice_vlan }}    !  Apply if IP phone attached
+ logging event link-status
+ load-interval 60
+ speed auto
+ duplex auto
+ spanning-tree portfast
+ snmp trap link-status
+ service-policy input pm_marking_notrust ! do not apply if port is 10Mbit speed
+ service-policy output pm_queueing ! do not apply if port is 10Mbit speed
+ no shutdown
+!
+! Port Options - uncabled ports, if any
+!
+interface GigabitEthernet1/0/{{ uncabled_port }}
+ description ** Not In Use **
+ switchport access vlan {{ data_vlan }}
+ switchport mode access
+ switchport nonegotiate
+ logging event link-status
+ load-interval 60
+ shutdown
+ spanning-tree portfast
+ snmp trap link-status
+! UA uplinks are defined as trunks, apply only existing VLANs to trunk
+!
+!
+!use when 1G uplinks are required
+interface GigabitEthernet1/1/1
+ description {{ site_code }}/UA-{{ UD_n_CD_a }}/{{ local_description }}
+ switchport trunk allowed vlan {{ data_vlan }},{{ voice_vlan }}
+ switchport mode trunk
+ switchport nonegotiate
+ logging event link-status
+ logging event trunk-status 
+ load-interval 60
+!If uplink is VSS use only [udld port enable] not aggressive!
+ udld port {{ aggressive_enable }}   ! Aggressive if other end supports UDLD aggressive, else enable
+ channel-group {{ port_channel }} mode desirable !apply if portchannel used
+ ip dhcp snooping trust
+ service-policy input pm_marking_notrust
+ service-policy output pm_queueing
+ no shutdown
+!
+interface GigabitEthernet1/1/2
+ description {{ site_code }}/UA-{{ UD_n_CD_a }}/{{ local_description }}
+ switchport trunk allowed vlan {{ data_vlan }},{{ voice_vlan }}
+ switchport mode trunk
+ switchport nonegotiate
+ logging event link-status
+ logging event trunk-status 
+ load-interval 60
+!If uplink is VSS use only [udld port enable] not aggressive!
+ udld port {{ aggressive_enable }}   ! Aggressive if other end supports UDLD aggressive, else enable
+ channel-group {{ port_channel }} mode desirable !apply if portchannel used
+ ip dhcp snooping trust
+ service-policy input pm_marking_notrust
+ service-policy output pm_queueing
+ no shutdown
+!
+!use when 10G uplinks are required
+interface TenGigabitEthernet1/1/1
+ description {{ site_code }}/UA-{{ UD_n_CD_a }}/{{ local_description }}
+ switchport trunk allowed vlan {{ data_vlan }},{{ voice_vlan }}
+ switchport mode trunk
+ switchport nonegotiate
+ logging event link-status
+ logging event trunk-status 
+ load-interval 60
+!If uplink is VSS use only [udld port enable] not aggressive!
+ udld port {{ aggressive_enable }}   ! Aggressive if other end supports UDLD aggressive, else enable
+ channel-group {{ port_channel }} mode desirable !apply if portchannel used
+ ip dhcp snooping trust
+ service-policy input pm_marking_notrust
+ service-policy output pm_queueing
+ no shutdown
+!
+interface TenGigabitEthernet1/1/2
+ description {{ site_code }}/UA-{{ UD_n_CD_a }}/{{ local_description }}
+ switchport trunk allowed vlan {{ data_vlan }},{{ voice_vlan }}
+ switchport mode trunk
+ switchport nonegotiate
+ logging event link-status
+ logging event trunk-status 
+ load-interval 60
+!If uplink is VSS use only [udld port enable] not aggressive!
+ udld port {{ aggressive_enable }}   ! Aggressive if other end supports UDLD aggressive, else enable
+ channel-group {{ port_channel }} mode desirable !apply if portchannel used
+ ip dhcp snooping trust
+ service-policy input pm_marking_notrust
+ service-policy output pm_queueing
+ no shutdown
+!
+!if the switch peers with a VSS the uplink is a portchannel
+interface Port-channel{{ port_channel }}
+ description {{ site_code }}/UA-{{ UD_n_CD_a }}/{{ local_description }}
+ switchport trunk allowed vlan {{ data_vlan }},{{ voice_vlan }}
+ switchport mode trunk
+ switchport nonegotiate
+ logging event link-status
+ logging event trunk-status 
+ load-interval 60
+!If uplink is VSS use only [udld port enable] not aggressive!
+ udld port {{ aggressive_enable }}   ! Aggressive if other end supports UDLD aggressive, else enable
+ channel-group {{ port_channel }} mode desirable !apply if portchannel used
+ ip dhcp snooping trust
+ service-policy input pm_marking_notrust
+ service-policy output pm_queueing
+ no shutdown
+!
+!
+interface Vlan1
+ no ip address
+ no ntp broadcast client
+ shutdown
+!
+interface Vlan{{ data_vlan }}
+ description {{ site_code }}/{{ d_block }}-UAData/{{ data_vlan_ip }}/{{ data_vlan_cidr }}/V{{ data_vlan }}/{{ local_description }}
+ ip address {{ data_vlan_ip_addr }} 255.255.255.{{ data_vlan_subnet }}
+ no ip redirects
+ no ip proxy-arp
+ logging event link-status
+ load-interval 60
+ arp timeout 420
+ no shutdown
+!
+!
+ip default-gateway {{ default_gateway }}
+!
+no ip forward-protocol udp tftp
+no ip forward-protocol udp nameserver
+no ip forward-protocol udp domain
+no ip forward-protocol udp time
+no ip forward-protocol udp netbios-ns
+no ip forward-protocol udp netbios-dgm
+no ip forward-protocol udp tacacs
+ip tcp synwait-time 10
+ip tcp path-mtu-discovery
+no ip http server
+no ip http secure-server
+ip tacacs source-interface Vlan{{ data_vlan }}
+ip ssh version 2
+ip ssh dscp 18
+ip scp server enable
+!
+!
+ip access-list extended al_COS1
+ deny   ip any any fragments
+ permit udp any range 16384 32767 any range 16384 32767
+ permit tcp any any eq 1720
+ permit tcp any eq 1720 any
+ permit tcp any range 11000 11999 any range 11000 11999
+ permit udp any any eq 2427
+ permit udp any eq 2427 any
+ permit tcp any any eq 2428
+ permit tcp any eq 2428 any
+ permit tcp any any range 2000 2002
+ permit tcp any range 2000 2002 any
+ permit udp any any eq 1719
+ permit udp any eq 1719 any
+ permit udp any any eq 5060
+ permit udp any eq 5060 any
+ permit udp any any eq 5061
+ permit udp any eq 5061 any
+ permit tcp any any eq 5060
+ permit tcp any eq 5060 any
+ permit tcp any any eq 5061
+ permit tcp any eq 5061 any
+ permit udp any any range 8000 8015
+ permit udp any range 8000 8015 any
+ permit udp any range 50000 50019 any
+ permit udp any any range 50000 50019
+!
+
+! defined slowdown space
+
+!					   
+ip access-list extended al_COS2
+ deny   ip any any fragments
+ permit tcp any any eq telnet
+ permit tcp any eq telnet any
+ permit tcp any any eq 8216
+ permit tcp any any eq 8218
+ permit tcp any any eq 8232
+ permit tcp any any eq 8234
+ permit tcp any any eq 8246
+ permit tcp any any eq 8250
+ permit tcp any any eq 8252
+ permit tcp any any eq 8254
+ permit tcp any any eq 8256
+ permit tcp any any eq 8258
+ permit tcp any any eq 8262
+ permit tcp any any eq 8264
+ permit tcp any any eq 8280
+ permit tcp any any eq 8282
+ permit tcp any any eq 8290
+ permit tcp any any eq 8292
+ permit tcp any any eq 8294
+ permit tcp any any eq 8296
+ permit tcp any any eq 50001
+ permit tcp any any eq 50101
+ permit tcp any any eq 51501
+ permit tcp any any eq 51701
+ permit tcp any any eq 53101
+ permit tcp any any eq 53201
+ permit tcp any any eq 53401
+ permit tcp any any eq 53701
+ permit tcp any any eq 54901
+ permit tcp any any eq 55001
+ permit tcp any any eq 55301
+ permit tcp any any eq 55401
+ permit tcp any any eq 55601
+ permit tcp any any eq 55901
+ permit tcp any any eq 56101
+ permit tcp any any eq 56201
+ permit tcp any any eq 56501
+ permit tcp any any eq 58001
+ permit tcp any any eq 58201
+ permit tcp any any eq 59001
+ permit tcp any any eq 59201
+ permit tcp any any eq 59401
+ permit tcp any any eq 59601
+!
+
+! defined slowdown space
+
+!					   
+ permit tcp any any eq 3616
+ permit tcp any any eq 3617
+ permit tcp any any eq 3664
+ permit tcp any any eq 3646
+ permit tcp any any eq 3650
+ permit tcp any any eq 3653
+ permit tcp any any eq 3654
+ permit tcp any any eq 3656
+ permit tcp any any eq 3658
+ permit tcp any any eq 3216
+ permit tcp any any eq 3218
+ permit tcp any any eq 3232
+ permit tcp any any eq 3234
+ permit tcp any any eq 3246
+ permit tcp any any eq 3250
+ permit tcp any any eq 3252
+ permit tcp any any eq 3254
+ permit tcp any any eq 3256
+ permit tcp any any eq 3258
+ permit tcp any any eq 3262
+ permit tcp any any eq 3264
+ permit tcp any any eq 3270
+ permit tcp any any eq 3280
+ permit tcp any any eq 3282
+ permit tcp any any eq 3290
+ permit tcp any any eq 3292
+ permit tcp any any eq 3294
+ permit tcp any any eq 3296
+ permit tcp any eq 8216 any
+ permit tcp any eq 8218 any
+ permit tcp any eq 8232 any
+ permit tcp any eq 8234 any
+ permit tcp any eq 8246 any
+ permit tcp any eq 8250 any
+ permit tcp any eq 8252 any
+ permit tcp any eq 8254 any
+ permit tcp any eq 8256 any
+ permit tcp any eq 8258 any
+ permit tcp any eq 8262 any
+ permit tcp any eq 8264 any
+ permit tcp any eq 8280 any
+ permit tcp any eq 8282 any
+ permit tcp any eq 8290 any
+ permit tcp any eq 8292 any
+ permit tcp any eq 8294 any
+ permit tcp any eq 8296 any
+!
+
+! defined slowdown space
+
+!						
+ permit tcp any eq 50001 any
+ permit tcp any eq 50101 any
+ permit tcp any eq 51501 any
+ permit tcp any eq 51701 any
+ permit tcp any eq 53101 any
+ permit tcp any eq 53201 any
+ permit tcp any eq 53401 any
+ permit tcp any eq 53701 any
+ permit tcp any eq 54901 any
+ permit tcp any eq 55001 any
+ permit tcp any eq 55301 any
+ permit tcp any eq 55401 any
+ permit tcp any eq 55601 any
+ permit tcp any eq 55901 any
+ permit tcp any eq 56101 any
+ permit tcp any eq 56201 any
+ permit tcp any eq 56501 any
+ permit tcp any eq 58001 any
+ permit tcp any eq 58201 any
+ permit tcp any eq 59001 any
+ permit tcp any eq 59201 any
+ permit tcp any eq 59401 any
+ permit tcp any eq 59601 any
+ permit tcp any eq 3616 any
+ permit tcp any eq 3617 any
+ permit tcp any eq 3664 any
+ permit tcp any eq 3646 any
+ permit tcp any eq 3650 any
+ permit tcp any eq 3653 any
+ permit tcp any eq 3654 any
+ permit tcp any eq 3656 any
+ permit tcp any eq 3658 any
+ permit tcp any eq 3216 any
+ permit tcp any eq 3218 any
+ permit tcp any eq 3232 any
+ permit tcp any eq 3234 any
+ permit tcp any eq 3246 any
+ permit tcp any eq 3250 any
+ permit tcp any eq 3252 any
+ permit tcp any eq 3254 any
+ permit tcp any eq 3256 any
+ permit tcp any eq 3258 any
+ permit tcp any eq 3262 any
+ permit tcp any eq 3264 any
+ permit tcp any eq 3270 any
+ permit tcp any eq 3280 any
+ permit tcp any eq 3282 any
+ permit tcp any eq 3290 any
+ permit tcp any eq 3292 any
+ permit tcp any eq 3294 any
+ permit tcp any eq 3296 any
+!
+
+! defined slowdown space
+
+!					   
+ip access-list extended al_COS2V
+ deny   ip any any fragments
+ permit tcp any any eq 554
+ permit tcp any eq 554 any
+ permit udp any any eq 8081
+ permit udp any eq 8081 any
+ permit udp any any eq 8082
+ permit udp any eq 8082 any
+ permit udp any any eq 8083
+ permit udp any eq 8083 any
+ permit udp any any eq 8084
+ permit udp any eq 8084 any
+ permit udp any any eq 8085
+ permit udp any eq 8085 any
+ permit udp any any eq 9091
+ permit udp any eq 9091 any
+ permit udp any any eq 9092
+ permit udp any eq 9092 any
+ permit udp any range 35000 35999 any range 32768 65535
+ permit udp any range 32768 65535 any range 35000 35999
+ permit udp any eq 9000 any
+ permit udp any any eq 9000
+ permit tcp any eq 5004 any
+ permit tcp any any eq 5004
+ permit udp any range 50020 50039 any
+ permit udp any any range 50020 50039
+ permit udp any range 50040 50059 any
+ permit udp any any range 50040 50059
+!
+
+! defined slowdown space
+
+!					
+ip access-list extended al_COS4
+ permit gre any any
+!
+
+! defined slowdown space
+
+!						
+ip access-list extended al_COS5
+ deny   ip any any fragments
+ permit tcp any any range 10565 10569
+ permit tcp any range 10565 10569 any
+ permit tcp any any eq 16384
+ permit tcp any eq 16384 any
+ permit udp any any range 33001 34100
+ permit udp any range 33001 34100 any
+ permit tcp any any eq 1500
+ permit tcp any eq 1500 any
+ permit tcp any any eq 1501
+ permit tcp any eq 1501 any
+ permit tcp any any eq 6520
+ permit tcp any eq 6520 any
+ permit tcp any any eq 6530
+ permit tcp any eq 6530 any
+ permit tcp any any eq 6540
+ permit tcp any eq 6540 any
+ permit tcp any any eq 6550
+ permit tcp any eq 6550 any
+ permit tcp any any eq 3501
+ permit tcp any eq 3501 any
+ permit tcp any any eq 3503
+ permit tcp any eq 3503 any
+ !
+ 
+ Netapp Ontap Snapmirror
+ Avamar 
+ 
+ !
+ permit tcp any any eq 10000
+ permit tcp any eq 10000 any
+ permit tcp any any eq 11104
+ permit tcp any eq 11104 any
+ permit tcp any any eq 11105
+ permit tcp any eq 11105 any
+ permit tcp any any eq 2049
+ permit tcp any eq 2049 any
+ permit udp any any eq 2049
+ permit udp any eq 2049 any
+ permit tcp any any eq 2051
+ permit tcp any eq 2051 any
+ permit udp any any eq 2051
+ permit udp any eq 2051 any
+ permit tcp any any eq 27000
+ permit tcp any eq 27000 any
+ permit tcp any any eq 29000
+ permit tcp any eq 29000 any
+ !
+!
+logging history notifications
+logging trap notifications
+logging source-interface Vlan{{ data_vlan }}
+logging host {{ ibm_snmp1 }}
+logging host {{ ibm_snmp2 }}
+!
+access-list 40 remark /**********************************************
+access-list 40 remark SNMP RO authorized servers
+access-list 40 remark ***********************************************
+access-list 40 remark SNMP RO IBM authorized servers
+access-list 40 permit 10.116.0.0 0.0.255.255
+access-list 40 permit 10.14.104.0 0.0.0.255
+access-list 40 permit 163.198.110.0 0.0.0.255
+access-list 40 remark SNMP RO Intermapper RND authorized servers
+access-list 40 permit 136.141.117.0 0.0.0.255
+access-list 40 permit 163.198.75.0 0.0.0.255
+access-list 40 remark SNMP RO TSSD blocks authorized servers
+access-list 40 permit 10.0.1.0 0.0.0.255
+access-list 40 permit 10.0.2.0 0.0.0.255
+access-list 40 permit 10.0.3.0 0.0.0.255
+access-list 40 permit 10.0.4.0 0.0.0.255
+access-list 40 permit 10.0.5.0 0.0.0.255
+access-list 40 permit 10.0.6.0 0.0.0.255
+access-list 40 remark SNMP RO Netdisco authorized servers
+access-list 40 permit 163.198.75.32 0.0.0.7
+access-list 40 remark SNMP RO Prime authorized servers
+access-list 40 permit 10.209.5.0 0.0.0.255
+access-list 40 remark EGW - Emergency 991 Gateway servers
+access-list 40 permit 206.16.62.14
+access-list 40 permit 206.19.41.14
+!
+access-list 41 remark /**********************************************
+access-list 41 remark SNMP RW authorized servers
+access-list 41 remark ***********************************************
+access-list 41 remark SNMP RW IBM authorized servers
+access-list 41 permit 10.116.0.0 0.0.255.255
+access-list 41 permit 10.14.104.0 0.0.0.255
+access-list 41 permit 163.198.110.0 0.0.0.255
+access-list 41 remark SNMP RW TSSD blocks authorized servers
+access-list 41 permit 10.0.1.0 0.0.0.255
+access-list 41 permit 10.0.2.0 0.0.0.255
+access-list 41 permit 10.0.3.0 0.0.0.255
+access-list 41 permit 10.0.4.0 0.0.0.255
+access-list 41 permit 10.0.5.0 0.0.0.255
+access-list 41 permit 10.0.6.0 0.0.0.255
+access-list 41 remark SNMP RW Prime authorized servers
+access-list 41 permit 10.209.5.0 0.0.0.255
+!
+access-list 50 remark /**********************************************
+access-list 50 remark NTP services
+access-list 50 remark ***********************************************
+access-list 50 permit 10.0.1.49
+access-list 50 permit 10.0.2.49
+access-list 50 permit 10.0.4.49
+access-list 50 permit 10.0.5.49
+access-list 50 permit 10.0.6.49
+!
+access-list 55 remark /**********************************************
+access-list 55 remark IBM SNMP RW authorized servers
+access-list 55 remark **********************************************/
+access-list 55 permit 10.116.0.0 0.0.255.255
+access-list 55 permit 10.14.104.0 0.0.0.255
+access-list 55 permit 163.198.110.0 0.0.0.255
+access-list 56 remark /**********************************************
+access-list 56 remark IBM SNMP RO authorized servers
+access-list 56 remark **********************************************/
+access-list 56 permit 10.116.0.0 0.0.255.255
+access-list 56 permit 10.14.104.0 0.0.0.255
+access-list 56 permit 163.198.110.0 0.0.0.255
+!
+access-list 66 remark /****************************************************
+access-list 66 remark SNMP Read Only Dow authorized servers
+access-list 66 remark ****************************************************/
+access-list 66 permit 136.141.254.0 0.0.0.255
+access-list 66 permit 136.141.117.0 0.0.0.255
+access-list 66 permit 165.216.28.0 0.0.3.255
+access-list 66 permit 165.216.236.0 0.0.1.255
+access-list 66 permit 165.216.232.0 0.0.0.255
+access-list 66 permit 165.216.243.0 0.0.0.63
+access-list 66 permit 165.216.246.0 0.0.0.255
+access-list 66 permit 165.216.247.0 0.0.0.255
+access-list 66 permit 165.216.248.0 0.0.0.255
+access-list 66 permit 144.68.68.0 0.0.1.255
+access-list 66 permit 144.68.204.0 0.0.1.255
+access-list 66 permit 144.68.252.0 0.0.1.255
+access-list 66 permit 143.219.184.0 0.0.1.255
+access-list 66 permit 143.219.186.0 0.0.1.255
+access-list 66 permit 204.136.222.128 0.0.0.127
+access-list 66 permit 204.136.221.128 0.0.0.127
+access-list 66 permit 204.136.252.0 0.0.1.255
+access-list 66 permit 216.99.78.128 0.0.0.127
+!
+!
+!
+snmp-server community R34d0n1YInt3rM4pP3r4d0w RO 66
+snmp-server community tr0p1c4lst0rms RO 40
+snmp-server community summer_N_c0l0rad0 RW 41
+snmp-server community 3ASyXssQ4Utiy4WPu9U6f3 RO 55
+snmp-server community AjXDFiGhT4hea3TZ637zm7 RW 56
+snmp-server trap-source Vlan{{ data_vlan }}
+snmp-server queue-length 100
+snmp-server location {{ region }}/{{ country }}/{{ site_code }}/{{ function }}/{{ GMToffset }}/{{ building_floor }}/{{ closet }}/{{ rack }}/{{ local_description }}
+snmp-server ip dscp 18
+snmp-server contact I-DOW-IS-IBMNETWORK-OPS
+snmp-server system-shutdown
+snmp-server enable traps 
+snmp-server host {{ ibm_snmp1 }} 3ASyXssQ4Utiy4WPu9U6f3 snmp
+snmp-server host {{ ibm_snmp2 }} 3ASyXssQ4Utiy4WPu9U6f3 snmp
+snmp-server host 10.116.1.22 3ASyXssQ4Utiy4WPu9U6f3 config
+snmp-server host 10.116.1.23 3ASyXssQ4Utiy4WPu9U6f3 config
+snmp-server host 10.116.1.24 3ASyXssQ4Utiy4WPu9U6f3 config
+snmp-server host 10.116.64.6 3ASyXssQ4Utiy4WPu9U6f3 config
+snmp ifmib ifindex persist
+tacacs-server timeout 10
+tacacs-server directed-request
+!ignore the warning below about 0 type passwords, there is no workaround yet for OS version, Cisco 
+!stated this will change in on of upcoming releases
+tacacs-server key 3r16lwe4rumtslso9wcu
+tacacs server ibm_tacacs_pri
+ address ipv4 {{ ibm_tacacs1 }}
+tacacs server ibm_tacacs_sec
+ address ipv4 {{ ibm_tacacs2 }}
+!
+!
+!
+! define commands for privilege levels
+privilege exec level 1 traceroute
+privilege exec level 1 ping
+privilege exec level 1 show configuration
+privilege exec level 1 clear ip accounting
+privilege exec level 1 clear ip
+privilege exec level 1 clear counters
+privilege exec level 1 clear
+privilege exec level 1 enable
+privilege exec level 1 terminal monitor
+privilege exec level 1 terminal no monitor
+
+
+banner exec ^*** C9300L-24P|48P-4XL, 1.1, DowIBM-UA-C9300L-24_48PD-4XL_ibm_v1.0.txt ***^
+banner motd ^
+******************************************************************
+*                         LEGAL   NOTICE                         *
+******************************************************************
+*                                                                *
+* THIS COMPUTER SYSTEM INCLUDING ALL RELATED EQUIPMENT, NETWORKS *
+* AND  NETWORK DEVICES ARE PROVIDED FOR LEGITIMATE BUSINESS      *
+* PURPOSES ONLY.  UNAUTHORIZED ACCESS, USE, OR MODIFICATION OF   *
+* THIS SYSTEM IS STRICTLY PROHIBITED. USE OF THIS COMPUTER       *
+* SYSTEM, CONSTITUES EXPRESS CONSENT TO MONITORING AND RECORDING *
+* OF ANY ACTIONS TAKEN WHILE USING THIS SYSTEM. EVIDENCE         *
+* COLLECTED DURING MONITORING MAY BE USED IN LEGAL PROCEEDINGS   *
+* OR DISCIPLINARY ACTIONS. UNAUTHORIZED USE MAY BE PUNISHABLE BY *
+* TERMINATION OR CRIMINAL OR CIVIL LITIGATION!                   *
+*                                                                *
+******************************************************************
+*                         LEGAL   NOTICE                         *
+******************************************************************
+^
+!
+line con 0
+					
+ exec-timeout 30 0
+ session-timeout 30
+ password europa48
+ logging synchronous
+
+line vty 0 4
+ exec-timeout 30 0
+ session-timeout 30
+ transport input ssh
+ transport preferred none
+ password europa48
+ logging synchronous
+						 
+					
+line vty 5 15
+ exec-timeout 30 0
+ session-timeout 30
+ transport input ssh
+ transport preferred none
+ password europa48
+ logging synchronous
+!
+ntp access-group peer 50
+ntp server {{ ibm_ntp1 }}
+ntp server {{ ibm_ntp2 }}
+!
+mac address-table aging-time 420
+!
+no wsma agent exec
+no wsma agent config
+no wsma agent filesys
+no wsma agent notify
+no wsma profile listener httplistener
+no wsma profile listener httpslistener
+no coap http enable
+!
+! it's best to apply aaa on the end of the configuration due to the atuthorization section!!!
+aaa new-model
+!
+!
+aaa authentication login default group tacacs+ line
+aaa authentication enable default group tacacs+ enable
+aaa accounting exec default start-stop group tacacs+
+aaa accounting commands 1 default stop-only group tacacs+
+aaa accounting commands 15 default start-stop group tacacs+
+aaa accounting connection default start-stop group tacacs+
+aaa accounting system default start-stop group tacacs+
+aaa session-id common    
+aaa authorization config-commands
+aaa authorization exec default group tacacs+ none
+aaa authorization console
+aaa authorization commands 15 default group tacacs+ none
+!
+aaa session-id common
+end

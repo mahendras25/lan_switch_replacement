@@ -1,0 +1,39 @@
+#######################################################
+# Developed and Supported by - GSE Network Team       #
+# Author: Mahendra Pratap Sengar                      #
+# Last Modified On: 13/Feb/2023                       #
+# Role/Playbook Name: lan_switch_replacement          #
+#######################################################
+---
+# tasks file for lan_switch_provision
+- name: Initialize variables
+  set_fact:
+    exec_success: false
+    exec_changed: false
+    exec_rc: 1
+    exec_message: "The initial status didn't change during the execution of the playbook."
+    exec_automation: "lan_switch_replacement"
+  tags:
+    - always  
+    
+- name: Generating Config for Switch replacement
+  block:
+    - include_tasks: lan_switch_replace.yml
+  tags:
+    - replace
+
+  debug:
+    msg: "RC: {{ exec_rc }}; {{ exec_message }}"
+  tags:
+    - replace      
+       
+- name: Generating Config for Switch Provisioning
+  block:
+    - include_tasks: lan_switch_provision.yml
+  tags:
+    - provision
+
+  debug:
+    msg: "RC: {{ exec_rc }}; {{ exec_message }}"
+  tags:
+    - provision      

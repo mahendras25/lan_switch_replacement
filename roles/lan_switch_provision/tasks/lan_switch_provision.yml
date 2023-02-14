@@ -1,0 +1,125 @@
+---
+- name: Set facts on error - Variable missing
+  set_fact:
+    exec_success: false
+    exec_changed: false
+    exec_rc: 314
+    exec_message: "Required variable is missing"
+  when: > 
+    site_code is undefined or
+    bldg_room is undefined or
+    seq is undefined or
+    data_vlan is undefined or
+    voice_vlan is undefined or
+    data_vlan_ip is undefined or
+    data_vlan_cidr is undefined or
+    local_description is undefined or
+    voice_vlan_ip is undefined or
+    default_gw is undefined or
+    voice_vlan_cidr is undefined or
+    port_range is undefined or
+    uncabled_port is undefined or
+    d_block is undefined or
+    aggressive_enable is undefined or
+    port_channel is undefined or
+    data_vlan_ip_addr is undefined or
+    data_vlan_subnet is undefined or
+    default_gateway is undefined or
+    region is undefined or
+    country is undefined or
+    function is undefined or
+    GMToffset is undefined or
+    building_floor is undefined or
+    closet is undefined or
+    rack is undefined or
+    ibm_snmp1 is undefined or
+    ibm_snmp2 is undefined or 
+    ibm_tacacs1 is undefined or
+    ibm_tacacs2 is undefined or
+    ibm_ntp1 is undefined or
+    ibm_ntp2 is undefined or
+    line_password is undefined or
+    teng_port is undefined
+
+- name: Set facts on error - Variable value missing
+  set_fact:
+    exec_success: false
+    exec_changed: false
+    exec_rc: 315
+    exec_message: "Required variable value is missing"
+  when: > 
+    not site_code or
+    not bldg_room or
+    not seq or
+    not data_vlan or
+    not voice_vlan or
+    notdata_vlan_ip or
+    not data_vlan_cidr or
+    not local_description or
+    not voice_vlan_ip or
+    not default_gw or
+    not voice_vlan_cidr or
+    not port_range or
+    not uncabled_port or
+    not d_block or
+    not aggressive_enable or
+    not port_channel or
+    not data_vlan_ip_addr or
+    not data_vlan_subnet or
+    not default_gateway or
+    not region or
+    not country or
+    not function or
+    not GMToffset or
+    not building_floor or
+    not closet or
+    not rack or
+    not ibm_snmp1 or
+    not ibm_snmp2 or 
+    not ibm_tacacs1 or
+    not ibm_tacacs2 or
+    not ibm_ntp1 or
+    not ibm_ntp2 or
+    not line_password or
+    not teng_port
+  
+- name: Initializing the playbook
+  block:  
+    - name: Commands initialized
+      ios_command:
+        commands: 
+          - show run         
+      register: show_running
+  
+    - name: Gathering required facts
+      setup:    
+        gather_subset:
+          - min           
+          
+    - name: Gather IOS Facts
+      ios_facts:
+        gather_subset: min   
+ 
+    - name: Saving running-config backup ouput to local file
+      copy:
+        content: "{{ show_running.stdout[0] }}"
+        dest: "{{ precheck_path }}{{ dir_name }}/{{ inventory_hostname }}_config_backup_{{ ansible_date_time.date }}_{{ ansible_date_time.time }}.txt"
+    
+    - name: New Config generated
+      template:
+        src: new_config.j2
+        dest: "{{ precheck_path }}{{ dir_name }}/{{ site_code }}-Z-UA-{{ bldg_room }}-{{ seq }}_new_config.txt" 
+
+    #- name: New Config Pushed to device {{ inventory_hostname }}
+    #  ios_config:
+    #    src: new_config.j2
+    #    match: none  
+
+  rescue:
+    - name: Set facts on error - command failed
+      set_fact:
+        exec_success: false
+        exec_changed: false
+        exec_rc: 316
+        exec_message: "Configuraton Generation Failed"
+  when: exec_rc != 314 and exec_rc != 315    

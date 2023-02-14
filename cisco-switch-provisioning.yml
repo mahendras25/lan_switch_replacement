@@ -1,0 +1,70 @@
+#######################################################
+# Developed and Supported by - GSE Network Team       #
+# Author: Mahendra Pratap Sengar                      #
+# Last Modified On: 13/Feb/2023                       #
+# Role/Playbook Name: lan_switch_replacement          #
+#######################################################
+---      
+- name: CISCO SWITCH CONFIGURATION
+  hosts: all
+  gather_facts: false
+  no_log: no
+  tasks:
+    - name: LAN SWITCH ROLE
+      include_role:
+        name: lan_switch_provision
+      tags:
+        - always
+        - replace 
+        - provision        
+    
+    - name: Returncodes
+      block:
+        - name: Set link to documentation and name
+          include_role:
+            name: returncode
+            tasks_from: set_job_properties
+          vars:
+            asset_name: "lan_switch_replacement"
+            documentation:
+            default: "https://github.kyndryl.net/Continuous-Engineering/lan_switch_replacement"      
+          
+        - name: RETURN CODE GENERATION IN CASE OF MISCONFIG
+          include_role:
+            name: returncode
+          vars:
+            rc_support: account
+            rc_group: misconfiguration
+            rc_number: "{{ exec_rc }}"
+            rc_message: "{{ exec_message }}"
+          when: exec_rc == 313 or exec_rc == 314 or exec_rc == 315
+    
+        - name: RETURN CODE GENERATION IN CASE OF EXECUTION FAILURE
+          include_role:
+            name: returncode
+          vars:
+            rc_support: developer
+            rc_group: component_playbook
+            rc_number: "{{ exec_rc }}"
+            rc_message: "{{ exec_message }}"
+          when: exec_rc == 316
+    
+        - name: RETURN CODE GENERATION IN CASE OF SUCCESS
+          include_role:
+            name: returncode
+          vars:
+            rc_success: true
+            rc_message: "SUCCESS"
+          when: exec_rc == 0
+    
+        - name: RETURN CODE GENERATION IN CASE OF UNKNOWN FAILURE
+          include_role:
+            name: returncode
+          vars:
+            rc_support: developer
+            rc_group: framework_playbook
+            rc_number: "{{ exec_rc }}"
+            rc_message: "{{ exec_message }}"
+          when: exec_rc == 1                    
+      tags:
+        - always    

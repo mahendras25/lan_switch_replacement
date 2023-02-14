@@ -1,0 +1,7 @@
+---
+# global role to generate the return code
+- name: returncode
+  scm: 'git'
+  src: https://github.kyndryl.net/Continuous-Engineering/ansible_role_returncode.git
+  version: 1.2.0
+  
